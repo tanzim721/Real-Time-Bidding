@@ -3,74 +3,17 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 
 class RtbController extends Controller
 {
-    public function handleBidRequest(Request $request)
+    public function handleBidRequest(Request $request): JsonResponse
     {
-        $bidRequest = json_decode($request->getContent(), true);
+        // Parse the incoming bid request JSON
+        $bidRequest = $request->json()->all();
 
-        if (!$this->isValidBidRequest($bidRequest)) {
-            return response()->json(['error' => 'Invalid bid request'], 400);
-        }
-
-        $campaign = $this->selectCampaign($bidRequest);
-
-        if (!$campaign) {
-            return response()->json(['error' => 'No suitable campaign found'], 204);
-        }
-
-        $response = $this->generateBannerResponse($campaign);
-
-        return response()->json($response);
-    }
-
-    private function isValidBidRequest($bidRequest)
-    {
-        return isset($bidRequest['id']) && isset($bidRequest['imp']) && isset($bidRequest['device']);
-    }
-
-    private function selectCampaign($bidRequest)
-    {
-        $campaigns = $this->getCampaigns();
-
-        $selectedCampaign = null;
-
-        foreach ($campaigns as $campaign) {
-            if ($this->isCampaignCompatible($campaign, $bidRequest)) {
-                if (!$selectedCampaign || $campaign['price'] > $selectedCampaign['price']) {
-                    $selectedCampaign = $campaign;
-                }
-            }
-        }
-
-        return $selectedCampaign;
-    }
-
-    private function isCampaignCompatible($campaign, $bidRequest)
-    {
-        $device = $bidRequest['device'];
-        $geo = $device['geo'];
-
-        return $campaign['country'] === $geo['country'] && $campaign['hs_os'] === $device['os'];
-    }
-
-    private function generateBannerResponse($campaign)
-    {
-        return [
-            'campaignname' => $campaign['campaignname'],
-            'advertiser' => $campaign['advertiser'],
-            'creative_id' => $campaign['creative_id'],
-            'image_url' => $campaign['image_url'],
-            'url' => $campaign['url'],
-            'price' => $campaign['price'],
-            'ad_id' => $campaign['code'],
-        ];
-    }
-
-    private function getCampaigns()
-    {
-        return [
+        // Example campaign array (you can replace this with data from a database)
+        $campaigns = [
             [
                 "campaignname" => "Test_Banner_13th-31st_march_Developer",
                 "advertiser" => "TestGP",
@@ -86,11 +29,57 @@ class RtbController extends Controller
                 "billing_id" => "123456789",
                 "price" => 0.1,
                 "bidtype" => "CPM",
-                "image_url" => "https://s3-ap-southeast-1.amazonaws.com/elasticbeanstalk-ap-southeast-1-5410920200615/CampaignFile/20240117030213/D300x250/e63324c6f222208f1dc66d3e2daaaf06.png",
-                "hs_os" => "Android,iOS,Desktop",
-                "country" => "Bangladesh",
-                "device_make" => "No Filter"
+                "image_url" => "https://s3-ap-southeast-1.amazonaws.com/elasticbeanstalk-ap-southeast-1-5410920200615/CampaignFile/20240117030213/D300x250/e63324c6f222208f1dc66d3e2daaaf06.png"
+            ],
+            // Add more campaigns here...
+        ];
+
+        // Select the most suitable campaign
+        $selectedCampaign = $this->selectCampaign($bidRequest, $campaigns);
+
+        // Generate the response
+        $response = [
+            'id' => $bidRequest['id'],
+            'bidid' => uniqid(),
+            'seatbid' => [
+                [
+                    'bid' => [
+                        [
+                            'id' => $selectedCampaign['creative_id'],
+                            'impid' => $bidRequest['imp'][0]['id'],
+                            'price' => $selectedCampaign['price'],
+                            'adid' => $selectedCampaign['code'],
+                            'nurl' => $selectedCampaign['url'],
+                            'adm' => $selectedCampaign['image_url'],
+                            'adomain' => [$selectedCampaign['tld']],
+                            'iurl' => $selectedCampaign['image_url'],
+                            'cid' => $selectedCampaign['code'],
+                            'crid' => $selectedCampaign['creative_id'],
+                            'attr' => [$selectedCampaign['attribute']],
+                        ]
+                    ]
+                ]
             ]
         ];
+
+        // Return JSON response
+        return response()->json($response);
+    }
+
+    private function selectCampaign(array $bidRequest, array $campaigns): array
+    {
+        // Select campaign based on dimension matching (you can expand this logic)
+        foreach ($campaigns as $campaign) {
+            // Example logic: Check if campaign dimension matches the bid request
+            $dimension = $campaign['dimension'];
+            $bannerWidth = $bidRequest['imp'][0]['banner']['w'];
+            $bannerHeight = $bidRequest['imp'][0]['banner']['h'];
+            if ("{$bannerWidth}x{$bannerHeight}" === $dimension) {
+                return $campaign;
+            }
+        }
+
+        // Fallback to the first campaign if no match found
+        return $campaigns[0];
     }
 }
